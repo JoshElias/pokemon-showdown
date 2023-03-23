@@ -15,7 +15,8 @@
         "incremental": true,
         "allowUnreachableCode": false,
         "esModuleInterop": true,
-        "useDefineForClassFields": false
+        "useDefineForClassFields": false,
+        "sourceMap": true
     },
     "types": ["node"],
     "exclude": [
