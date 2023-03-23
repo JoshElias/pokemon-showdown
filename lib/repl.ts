@@ -20,16 +20,17 @@ export const Repl = new class {
 	/**
 	 * Contains the pathnames of all active REPL sockets.
 	 */
-	socketPathnames: Set<string> = new Set();
-
+	socketPaths: string[] = [];
 	listenersSetup = false;
+
 
 	setupListeners(filename: string) {
 		if (Repl.listenersSetup) return;
 		Repl.listenersSetup = true;
+
 		// Clean up REPL sockets and child processes on forced exit.
 		process.once('exit', code => {
-			for (const s of Repl.socketPathnames) {
+			for (const s of Repl.socketPaths) {
 				try {
 					fs.unlinkSync(s);
 				} catch {}
@@ -57,6 +58,46 @@ export const Repl = new class {
 		};
 	}
 
+	cleanOldSockets(filename: string) {
+		if (filename !== 'app') return;
+		try {
+			const directory = path.dirname(
+				path.resolve(FS.ROOT_PATH, 'logs/repl', 'app')
+			);
+			const files = fs.readdirSync(directory, {withFileTypes: true});
+			files && files.forEach(this.cleanSocket(directory));
+				
+		} catch(err) {
+			console.log("error reading directory: ", err);
+		}
+	}
+
+
+	cleanSocket = (directory: string) => 
+		(file: fs.Dirent) => { 
+			if (!file.isSocket()) return;
+			const pathname = path.join(directory, file.name);
+			const socket = net.connect(pathname, () => {
+				socket.end();
+				socket.on("close", () => {
+					console.log("socket ended gracefully");
+					console.log("is destroyed: ", socket.destroyed);
+					socket.destroyed || socket.destroy();
+					fs.unlink(pathname, (err) => {
+						if (err) {
+						console.error(`Error deleting file: ${err}`);
+						} else {
+						console.log('File deleted.');
+						}
+					});
+				});
+			})
+			.on('error', () => {
+				console.log("error on socket: ", pathname)
+				
+			});
+		}
+
 	/**
 	 * Starts a REPL server, using a UNIX socket for IPC. The eval function
 	 * parametre is passed in because there is no other way to access a file's
@@ -66,36 +107,14 @@ export const Repl = new class {
 		const config = typeof Config !== 'undefined' ? Config : {};
 		if (config.repl !== undefined && !config.repl) return;
 
+		//const baseSocketPath = path.resolve(FS.ROOT_PATH, Config.replsocketprefix || 'logs/repl');
+
 		// TODO: Windows does support the REPL when using named pipes. For now,
 		// this only supports UNIX sockets.
 
 		Repl.setupListeners(filename);
-
-		if (filename === 'app') {
-			// Clean up old REPL sockets.
-			const directory = path.dirname(
-				path.resolve(FS.ROOT_PATH, config.replsocketprefix || 'logs/repl', 'app')
-			);
-			let files;
-			try {
-				files = fs.readdirSync(directory);
-			} catch {}
-			if (files) {
-				for (const file of files) {
-					const pathname = path.resolve(directory, file);
-					const stat = fs.statSync(pathname);
-					if (!stat.isSocket()) continue;
-
-					const socket = net.connect(pathname, () => {
-						socket.end();
-						socket.destroy();
-					}).on('error', () => {
-						fs.unlink(pathname, () => {});
-					});
-				}
-			}
-		}
-
+		this.cleanOldSockets(filename);
+		
 		const server = net.createServer(socket => {
 			repl.start({
 				input: socket,
@@ -108,17 +127,21 @@ export const Repl = new class {
 					}
 				},
 			}).on('exit', () => socket.end());
-			socket.on('error', () => socket.destroy());
+			socket.on('error', () => {
+				console.log("Where my errrors at??!?")
+				socket.destroy()
+			});
 		});
 
 		const pathname = path.resolve(FS.ROOT_PATH, Config.replsocketprefix || 'logs/repl', filename);
 		try {
 			server.listen(pathname, () => {
 				fs.chmodSync(pathname, Config.replsocketmode || 0o600);
-				Repl.socketPathnames.add(pathname);
+				Repl.socketPaths.push(pathname);
 			});
 
 			server.once('error', (err: NodeJS.ErrnoException) => {
+				console.log("Socket server error: ", err);
 				server.close();
 				if (err.code === "EADDRINUSE") {
 					fs.unlink(pathname, _err => {
@@ -136,7 +159,7 @@ export const Repl = new class {
 			});
 
 			server.once('close', () => {
-				Repl.socketPathnames.delete(pathname);
+				Repl.socketPaths = Repl.socketPaths.filter((v) => v === pathname);
 			});
 		} catch (err) {
 			console.error(`Could not start REPL server "${filename}": ${err}`);
