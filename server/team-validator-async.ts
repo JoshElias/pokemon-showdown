@@ -8,6 +8,7 @@
  */
 
 import {TeamValidator} from '../sim/team-validator';
+import { Repl } from "../lib";
 
 export class TeamValidatorAsync {
 	format: Format;
@@ -92,7 +93,9 @@ if (!PM.isParentProcess) {
 	global.Teams = require('../sim/teams').Teams;
 
 	// eslint-disable-next-line no-eval
-	require('../lib/repl').Repl.start(`team-validator-${process.pid}`, (cmd: string) => eval(cmd));
+	//import('../lib/repl').then(({Repl}) => {
+		Repl.start(`team-validator-${process.pid}`, (cmd: string) => eval(cmd));
+	//})
 } else {
 	PM.spawn(global.Config ? Config.validatorprocesses : 1);
 }

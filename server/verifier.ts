@@ -12,6 +12,7 @@
  * @license MIT
  */
 import * as crypto from 'crypto';
+import { Repl } from "../lib";
 
 import {QueryProcessManager} from '../lib/process-manager';
 
@@ -34,9 +35,11 @@ if (!PM.isParentProcess) {
 	// This is a child process!
 	global.Config = require('./config-loader').Config;
 
-	const Repl = require('../lib/repl').Repl;
-	// eslint-disable-next-line no-eval
-	Repl.start('verifier', (cmd: string) => eval(cmd));
+	
+	//import('../lib/repl').then(({Repl}) => {
+		// eslint-disable-next-line no-eval
+		Repl.start('verifier', (cmd: string) => eval(cmd));
+	//});
 } else {
 	PM.spawn(global.Config ? Config.verifierprocesses : 1);
 }
